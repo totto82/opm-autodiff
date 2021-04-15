@@ -103,6 +103,8 @@ namespace Opm
                 wsolvent_ = well_ecl_.getSolventFraction();
             }
         }
+
+        well_control_log_.clear();
     }
 
     template<typename TypeTag>
@@ -519,7 +521,6 @@ namespace Opm
         if (this->wellIsStopped()) {
             return false;
         }
-
         const auto& summaryState = ebos_simulator.vanguard().summaryState();
         const auto& schedule = ebos_simulator.vanguard().schedule();
         const auto& well = well_ecl_;
@@ -550,10 +551,28 @@ namespace Opm
             } else {
                 to = Well::ProducerCMode2String(well_state.currentProductionControls()[index_of_well_]);
             }
+            well_control_log_.push_back(to);
+            bool oscillating = std::count(well_control_log_.begin(), well_control_log_.end(), to ) > param_.max_number_of_well_switches_;
             std::ostringstream ss;
-            ss << "    Switching control mode for well " << name()
-               << " from " << from
-               << " to " <<  to;
+
+            if (oscillating) {
+                ss << "    The control model for well " << name()
+                   << " is oscillating between " << from
+                   << " and " <<  to << "\n"
+                   << " We don't allow for more than "
+                   << param_.max_number_of_well_switches_
+                   << " switches.";
+                if (well.isInjector()) {
+                    well_state.currentInjectionControls()[index_of_well_] = Well::InjectorCModeFromString(from);
+                } else {
+                    well_state.currentProductionControls()[index_of_well_] = Well::ProducerCModeFromString(from);
+                }
+            } else {
+                ss << "    Switching control mode for well " << name()
+                   << " from " << from
+                   << " to " <<  to;
+            }
+
             if (cc.size() > 1) {
                ss << " on rank " << cc.rank();
             }
